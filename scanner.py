@@ -25,7 +25,7 @@ class Service:
         # UI Messages
         self.msg_down = f'\U0000203C\U0000203C\U0000203C {self.name} Down: '
         self.msg_recover = f'\U00002705\U00002705\U00002705 {self.name} Recovered: '
-        self.msg_timeout = f'\U0000203C\U0000203C\U0000203C {self.name} Server Timeout: '
+        self.msg_timeout = f'\U0000203C\U0000203C\U0000203C {self.name} Server Timeout'
         self.msg_start = f'\U0001F6E1 {self.name} monitoring started ...'
 
     def parse(self) -> list:
@@ -40,7 +40,7 @@ class Service:
 
     def send_timeout_message(self, response, message):
         """Send Notification server timeout"""
-        BOT.send_message(message.chat.id, f'{self.msg_timeout},{response}', reply_markup=self.button)
+        BOT.send_message(message.chat.id, self.msg_timeout, reply_markup=self.button)
         l.logger.info(f'{self.name} timeout: {response} received')
         time.sleep(self.ping_break_time)
 
