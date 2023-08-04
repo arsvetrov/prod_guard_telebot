@@ -1,12 +1,9 @@
+from api_token import *
+from logger import *
+from services import *
 import requests
 import time
-import telebot
 import threading
-import logger as l
-import api_token as t
-
-# Telegram API token
-BOT = t.token
 
 
 class Service:
@@ -18,89 +15,91 @@ class Service:
         self.url = url
         self.ping_break_time = ping_break_time
 
-        # UI Buttons
+    def get_service(self) -> list:
+        """ Get service response headers"""
+        get_url = requests.get(self.url, timeout=0.2)
+        url_status = [get_url.status_code, get_url.reason]
+        time.sleep(self.ping_break_time)
+        return url_status
+
+
+class Bot(Service):
+    """Bot UI items"""
+    def __init__(self, name, url):
+        super().__init__(name, url, ping_break_time=0)
+
+        # Bot UI buttons
         self.button = telebot.types.InlineKeyboardMarkup()
         self.button.add(telebot.types.InlineKeyboardButton(f'Visit {self.name}', url=self.url))
 
-        # UI Messages
+        # Bot UI messages text
         self.msg_down = f'\U0000203C\U0000203C\U0000203C {self.name} Down: '
         self.msg_recover = f'\U00002705\U00002705\U00002705 {self.name} Recovered: '
-        self.msg_timeout = f'\U0000203C\U0000203C\U0000203C {self.name} Server Timeout'
+        self.msg_timeout = f'\U0000203C\U0000203C\U0000203C {self.name} Server Timeout '
         self.msg_start = f'\U0001F6E1 {self.name} monitoring started ...'
 
-    def parse(self) -> list:
-        """ Get service response headers"""
-        get_url = requests.get(self.url)
-        url_status = [get_url.status_code, get_url.reason]
-        return url_status
-
+    # Bot send messages
     def send_start_message(self, message):
         """Send Notification monitoring started"""
-        BOT.send_message(message.chat.id, self.msg_start)
+        bot.send_message(message.chat.id, self.msg_start)
 
     def send_timeout_message(self, response, message):
         """Send Notification server timeout"""
-        BOT.send_message(message.chat.id, self.msg_timeout, reply_markup=self.button)
-        l.logger.info(f'{self.name} timeout: {response} received')
-        time.sleep(self.ping_break_time)
+        bot.send_message(message.chat.id, self.msg_timeout, reply_markup=self.button)
+        logger.error(f'{self.name} timeout: {response} received')
 
     def send_down_message(self, response, message):
         """Send Notification server down"""
-        BOT.send_message(message.chat.id, f'{self.msg_down}{response}', reply_markup=self.button)
-        l.logger.info(f'{self.name} server down reason: {response}')
-        time.sleep(self.ping_break_time)
+        bot.send_message(message.chat.id, f'{self.msg_down}{response}', reply_markup=self.button)
+        logger.error(f'{self.name} server down reason: {response}')
 
     def send_recover_message(self, response, message):
         """Send Notification server recovered"""
-        BOT.send_message(message.chat.id, f'{self.msg_recover}{response}', reply_markup=self.button)
-        l.logger.info(f'{self.name} up after timeout: {response} received')
-        time.sleep(self.ping_break_time)
+        bot.send_message(message.chat.id, f'{self.msg_recover}{response}', reply_markup=self.button)
+        logger.info(f'{self.name} restored: {response} received')
 
 
 if __name__ == '__main__':
-
-    # Services initializing Name, URL, ping_time seconds
-    service_1 = Service('service_1_name_here', 'url_service_1_name_here', 60)
-    service_2 = Service('service_2_name_here', 'url_service_1_name_here', 60)
-
-    # Services list for thread processing
-    services_list = [service_1, service_2]
-
 
     def scan_site(message, service):
         """
         Receives response header (status code, reason) from service
         then sends correspond to issue Notification to user in case if issue happened
         """
+        bot_ui = Bot(service.name, service.url)
+        bot_ui.send_start_message(message)
 
-        while True:
-            response = service.parse()
-            if response is None:
-                service.send_timeout_message(response, message)
-                while response is None:
-                    response = service.parse()
-                    if response[0] == 200:
-                        service.send_recover_message(response, message)
-            elif response[0] != 200:
-                service.send_down_message(response, message)
-                while response[0] != 200:
-                    response = service.parse()
-                    if response[0] == 200:
-                        service.send_recover_message(response, message)
+        while message:
+            try:
+                response = service.get_service()
+            except Exception as timeout:
+                bot_ui.send_timeout_message(timeout, message)
+                while timeout:  # This loop will run indefinitely until a valid response is obtained
+                    try:
+                        response = service.get_service()
+                    except Exception:
+                        continue
+                    else:
+                        if response[0] == 200:
+                            bot_ui.send_recover_message(response, message)
+                            break
             else:
-                time.sleep(service.ping_break_time)
+                if response[0] != 200:
+                    bot_ui.send_down_message(response, message)
+                    while response[0] != 200:
+                        response = service.get_service()
+                        if response[0] == 200:
+                            bot_ui.send_recover_message(response, message)
 
-    @BOT.message_handler()
+    @bot.message_handler()
     def start(message):
         """
-        Receives any message from user which includes telegram bot parameters needed for
-        interaction with code. Then processing  services list, run monitoring for each in
-        and send Notification to user 'service_name' monitoring started
+        Receives any message from user in telegram chat.
+        Then processing of services list starts.
+        The monitoring for each service starts
         """
         for service in services_list:
             thread = threading.Thread(target=scan_site, args=(message, service))
             thread.start()
-            service.send_start_message(message)
 
-
-    BOT.polling(none_stop=True)
+    bot.polling(none_stop=True)
