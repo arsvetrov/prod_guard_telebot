@@ -100,7 +100,6 @@ if __name__ == '__main__':
                 response = service.get_service()
             except Exception as timeout:
                 service_time_out(timeout, service, bot_ui, message)
-
             else:
                 if response[0] != 200:
                     service_down(bot_ui, response, message, service)
